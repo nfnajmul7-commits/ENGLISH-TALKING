@@ -18,18 +18,45 @@ data class WorldLanguage(
         }
 }
 
-enum class LanguageLevel(val label: String, val cefr: String, val shortDesc: String) {
-    BEGINNER("Beginner", "A1", "Core greetings, everyday phrases & slow pacing"),
-    ELEMENTARY("Elementary", "A2", "Simple daily conversations & common grammar"),
-    INTERMEDIATE("Intermediate", "B1", "Comfortable opinions, travel & workplace topics"),
-    UPPER_INTERMEDIATE("Upper-Intermediate", "B2", "Nuanced discussions, idioms & natural speed"),
-    ADVANCED("Advanced", "C1", "Fluent nuance, persuasion & native expressions");
+enum class LanguageLevel(
+    val label: String,
+    val bnLabel: String,
+    val cefr: String,
+    val shortDesc: String
+) {
+    BEGINNER("Beginner", "প্রাথমিক", "A1", "Core greetings, everyday phrases & slow pacing"),
+    ELEMENTARY("Elementary", "প্রাথমিক-মধ্যম", "A2", "Simple daily conversations & common grammar"),
+    INTERMEDIATE("Intermediate", "মধ্যম", "B1", "Comfortable opinions, travel & workplace topics"),
+    UPPER_INTERMEDIATE("Upper-Intermediate", "উচ্চ-মধ্যম", "B2", "Nuanced discussions, idioms & natural speed"),
+    ADVANCED("Advanced", "উচ্চতর", "C1", "Fluent nuance, persuasion & native expressions");
 
     companion object {
         fun fromName(value: String?): LanguageLevel =
             entries.firstOrNull { it.name == value || it.label == value } ?: BEGINNER
     }
 }
+
+enum class VoiceTone(
+    val label: String,
+    val bnLabel: String,
+    val pitch: Float,
+    val rateMultiplier: Float,
+    val description: String
+) {
+    SWEET_WARM("Sweet & Warm", "মধুর ও কোমল", 1.02f, 0.90f, "Soft, friendly natural cadence"),
+    CALM_CLEAR("Calm & Clear", "শান্ত ও স্পষ্ট", 0.95f, 0.85f, "Slower studio clarity for learning"),
+    NATURAL("Natural Pace", "স্বাভাবিক কণ্ঠ", 1.00f, 0.97f, "Balanced everyday conversational tone");
+
+    companion object {
+        fun fromName(value: String?): VoiceTone =
+            entries.firstOrNull { it.name == value } ?: SWEET_WARM
+    }
+}
+
+data class SpeechSegment(
+    val text: String,
+    val bcp47Locale: String
+)
 
 enum class TutorMode {
     LECTURE,
@@ -58,14 +85,15 @@ data class UserSettings(
     val studyInNativeLanguage: Boolean = true,
     val targetLanguageCode: String = "en",
     val nativeLanguageCode: String = "bn",
-    val level: LanguageLevel = LanguageLevel.INTERMEDIATE,
-    val interests: Set<String> = setOf("Cooking", "Travel", "Tech", "Daily Life"),
+    val level: LanguageLevel = LanguageLevel.BEGINNER,
+    val interests: Set<String> = setOf("Daily Life", "Travel", "Cooking", "Tech"),
     val dailyGoalMinutes: Int = 15,
     val reminderEnabled: Boolean = true,
     val reminderHour: Int = 9,
     val reminderMinute: Int = 0,
     val speechRate: Float = 1.0f,
-    val autoPlayAudio: Boolean = true
+    val autoPlayAudio: Boolean = true,
+    val voiceTone: VoiceTone = VoiceTone.SWEET_WARM
 ) {
     val targetLanguage: WorldLanguage
         get() = WorldLanguagesCatalog.byCode(targetLanguageCode)

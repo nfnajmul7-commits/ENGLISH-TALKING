@@ -12,6 +12,7 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.model.LanguageLevel
 import com.example.model.UserSettings
+import com.example.model.VoiceTone
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -37,6 +38,7 @@ class SettingsRepository(private val context: Context) {
         val REMINDER_MINUTE = intPreferencesKey("reminder_minute")
         val SPEECH_RATE = floatPreferencesKey("speech_rate")
         val AUTO_PLAY = booleanPreferencesKey("auto_play")
+        val VOICE_TONE = stringPreferencesKey("voice_tone")
     }
 
     val settingsFlow: Flow<UserSettings> = context.settingsDataStore.data.map { prefs ->
@@ -48,14 +50,15 @@ class SettingsRepository(private val context: Context) {
             studyInNativeLanguage = prefs[Keys.STUDY_IN_NATIVE] ?: true,
             targetLanguageCode = prefs[Keys.TARGET_LANG] ?: "en",
             nativeLanguageCode = prefs[Keys.NATIVE_LANG] ?: "bn",
-            level = LanguageLevel.fromName(prefs[Keys.LEVEL] ?: LanguageLevel.INTERMEDIATE.name),
-            interests = prefs[Keys.INTERESTS] ?: setOf("Cooking", "Travel", "Tech", "Daily Life"),
+            level = LanguageLevel.fromName(prefs[Keys.LEVEL] ?: LanguageLevel.BEGINNER.name),
+            interests = prefs[Keys.INTERESTS] ?: setOf("Daily Life", "Travel", "Cooking", "Tech"),
             dailyGoalMinutes = prefs[Keys.DAILY_GOAL] ?: 15,
             reminderEnabled = prefs[Keys.REMINDER_ENABLED] ?: true,
             reminderHour = prefs[Keys.REMINDER_HOUR] ?: 9,
             reminderMinute = prefs[Keys.REMINDER_MINUTE] ?: 0,
             speechRate = prefs[Keys.SPEECH_RATE] ?: 1.0f,
-            autoPlayAudio = prefs[Keys.AUTO_PLAY] ?: true
+            autoPlayAudio = prefs[Keys.AUTO_PLAY] ?: true,
+            voiceTone = VoiceTone.fromName(prefs[Keys.VOICE_TONE])
         )
     }
 
@@ -143,6 +146,12 @@ class SettingsRepository(private val context: Context) {
     suspend fun setAutoPlayAudio(enabled: Boolean) {
         context.settingsDataStore.edit { prefs ->
             prefs[Keys.AUTO_PLAY] = enabled
+        }
+    }
+
+    suspend fun setVoiceTone(tone: VoiceTone) {
+        context.settingsDataStore.edit { prefs ->
+            prefs[Keys.VOICE_TONE] = tone.name
         }
     }
 }

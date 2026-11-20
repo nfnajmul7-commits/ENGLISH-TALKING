@@ -41,6 +41,7 @@ import com.example.viewmodel.LingoPulseUiState
 fun HomeScreen(
     uiState: LingoPulseUiState,
     onSelectTopic: (String) -> Unit,
+    onSelectLevel: (com.example.model.LanguageLevel) -> Unit,
     onModeChange: (TutorMode) -> Unit,
     onCycleSpeed: () -> Unit,
     onToggleStageExpanded: () -> Unit,
@@ -50,6 +51,7 @@ fun HomeScreen(
     onStopAudio: () -> Unit,
     onPlayMessageAudio: (ChatMessageUi) -> Unit,
     onSpeakPhrase: (String) -> Unit,
+    onSpeakPhraseWithMeaning: (VocabPhrase) -> Unit,
     onSaveVocab: (VocabPhrase) -> Unit,
     onToggleHelper: (Long) -> Unit,
     onToggleTextInput: () -> Unit,
@@ -65,8 +67,10 @@ fun HomeScreen(
     }
 
     val settings = uiState.settings
+    val isBn = settings.nativeLanguageCode == "bn"
     val languageBadge = "${settings.nativeLanguage.flag} → ${settings.targetLanguage.flag} ${settings.level.cefr}"
     val liveCaption = uiState.partialTranscript.takeIf { it.isNotBlank() }
+        ?: uiState.messages.lastOrNull { !it.isUser }?.nativeExplanation?.takeIf { it.isNotBlank() }
         ?: uiState.messages.lastOrNull { !it.isUser }?.spokenText
 
     if (uiState.isStageExpanded) {
@@ -113,13 +117,11 @@ fun HomeScreen(
             onStopAudio = onStopAudio
         )
 
-        // Topic Strip tailored to User Interests + Log Lesson & Reset actions
-        val topicOptions = (settings.interests.toList() + listOf("Daily Life", "Greetings", "Grammar"))
-            .distinct()
+        // Progressive Level Stepper (Beginner A1 -> Advanced C1) + Log Lesson & Reset
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 12.dp, end = 8.dp, top = 2.dp, bottom = 2.dp),
+                .padding(start = 12.dp, end = 6.dp, top = 2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             LazyRow(
@@ -127,17 +129,18 @@ fun HomeScreen(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 contentPadding = PaddingValues(end = 6.dp)
             ) {
-                items(topicOptions) { topic ->
+                items(com.example.model.LanguageLevel.entries) { lvl ->
+                    val label = if (isBn) "${lvl.cefr} ${lvl.bnLabel}" else "${lvl.cefr} ${lvl.label}"
                     FilterChip(
-                        selected = uiState.activeTopic == topic,
-                        onClick = { onSelectTopic(topic) },
+                        selected = settings.level == lvl,
+                        onClick = { onSelectLevel(lvl) },
                         label = {
                             Text(
-                                text = topic,
+                                text = label,
                                 style = MaterialTheme.typography.labelMedium
                             )
                         },
-                        modifier = Modifier.testTag("topic_chip_${topic.lowercase().replace(" ", "_")}")
+                        modifier = Modifier.testTag("level_chip_${lvl.cefr.lowercase()}")
                     )
                 }
             }
@@ -149,7 +152,7 @@ fun HomeScreen(
                 modifier = Modifier.testTag("log_lesson_button")
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
@@ -170,14 +173,14 @@ fun HomeScreen(
             IconButton(
                 onClick = onClearChat,
                 modifier = Modifier
-                    .size(38.dp)
+                    .size(36.dp)
                     .testTag("refresh_lesson_button")
             ) {
                 Icon(
                     imageVector = Icons.Rounded.Refresh,
                     contentDescription = "New lesson chat",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(19.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
         }
@@ -200,6 +203,7 @@ fun HomeScreen(
             isPlaceholderAi = uiState.isPlaceholderAi,
             onPlayMessageAudio = onPlayMessageAudio,
             onSpeakPhrase = onSpeakPhrase,
+            onSpeakPhraseWithMeaning = onSpeakPhraseWithMeaning,
             onSaveVocab = onSaveVocab,
             onToggleHelper = onToggleHelper,
             onToggleVoice = onToggleVoice,

@@ -116,6 +116,8 @@ fun ProfileScreen(
     onSetReminderEnabled: (Boolean) -> Unit,
     onSetReminderTime: (Int, Int) -> Unit,
     onSetAutoPlayAudio: (Boolean) -> Unit,
+    onSetVoiceTone: (com.example.model.VoiceTone) -> Unit,
+    onTestSweetVoice: () -> Unit,
     onCycleSpeechRate: () -> Unit,
     onResetProgress: () -> Unit,
     modifier: Modifier = Modifier
@@ -748,6 +750,30 @@ fun ProfileScreen(
                             else -> "1.0x"
                         }
                         Text(label)
+                    }
+                }
+
+                // Voice Tone Selector (Sweet & Warm / Calm & Clear / Natural)
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Tutor Voice Style (কণ্ঠের ধরন)", style = MaterialTheme.typography.titleMedium)
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        com.example.model.VoiceTone.entries.forEach { tone ->
+                            FilterChip(
+                                selected = settings.voiceTone == tone,
+                                onClick = { onSetVoiceTone(tone) },
+                                label = { Text("${tone.label} · ${tone.bnLabel}") }
+                            )
+                        }
+                    }
+                    Button(
+                        onClick = onTestSweetVoice,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Text("Test Tutor Voice (বাংলা ও ইংরেজি কণ্ঠ শুনুন)")
                     }
                 }
 

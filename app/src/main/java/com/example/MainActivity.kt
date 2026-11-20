@@ -167,6 +167,7 @@ private fun LingoPulseApp(viewModel: LingoPulseViewModel) {
                         AppTab.HOME -> HomeScreen(
                             uiState = uiState,
                             onSelectTopic = viewModel::selectTopic,
+                            onSelectLevel = viewModel::setLevel,
                             onModeChange = viewModel::setTutorMode,
                             onCycleSpeed = viewModel::cycleSpeechRate,
                             onToggleStageExpanded = viewModel::toggleStageExpanded,
@@ -176,6 +177,7 @@ private fun LingoPulseApp(viewModel: LingoPulseViewModel) {
                             onStopAudio = viewModel::stopAudio,
                             onPlayMessageAudio = viewModel::playMessageAudio,
                             onSpeakPhrase = { text -> viewModel.speakPhrase(text) },
+                            onSpeakPhraseWithMeaning = viewModel::speakPhraseWithMeaning,
                             onSaveVocab = viewModel::saveVocabPhrase,
                             onToggleHelper = viewModel::toggleMessageHelper,
                             onToggleTextInput = viewModel::toggleTextInput,
@@ -199,6 +201,7 @@ private fun LingoPulseApp(viewModel: LingoPulseViewModel) {
                             onStopAudio = viewModel::stopAudio,
                             onPlayMessageAudio = viewModel::playMessageAudio,
                             onSpeakPhrase = { text -> viewModel.speakPhrase(text) },
+                            onSpeakPhraseWithMeaning = viewModel::speakPhraseWithMeaning,
                             onSaveVocab = viewModel::saveVocabPhrase,
                             onToggleHelper = viewModel::toggleMessageHelper,
                             onToggleTextInput = viewModel::toggleTextInput,
@@ -229,6 +232,8 @@ private fun LingoPulseApp(viewModel: LingoPulseViewModel) {
                             onSetReminderEnabled = viewModel::setReminderEnabled,
                             onSetReminderTime = viewModel::setReminderTime,
                             onSetAutoPlayAudio = viewModel::setAutoPlayAudio,
+                            onSetVoiceTone = viewModel::setVoiceTone,
+                            onTestSweetVoice = viewModel::testSweetVoice,
                             onCycleSpeechRate = viewModel::cycleSpeechRate,
                             onResetProgress = viewModel::resetAllProgress
                         )

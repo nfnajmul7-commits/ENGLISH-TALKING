@@ -10,7 +10,10 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.speech.tts.Voice
 import android.util.Log
+import com.example.model.SpeechSegment
+import com.example.model.VoiceTone
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -36,15 +39,23 @@ data class LipSyncFrame(
 )
 
 /**
- * Manages real Android [TextToSpeech] with real-time vowel/syllable lip-sync telemetry
- * (combining [UtteranceProgressListener.onRangeStart] with a speech-rate-calibrated syllable
- * cadence fallback) and real Android [SpeechRecognizer] voice input with live partial transcripts
- * and microphone RMS amplitude.
+ * Manages high-quality bilingual Android [TextToSpeech] with smart neural voice selection
+ * (picking the sweetest, clearest high-quality voice per language — e.g. Bengali `bn-BD`/`bn-IN`
+ * alongside English `en-US` or any world language) and real-time vowel/syllable lip-sync telemetry,
+ * plus [SpeechRecognizer] voice input with live partial transcripts and RMS amplitude.
  */
 class SpeechLipSyncEngine(private val context: Context) {
 
     companion object {
         private const val TAG = "SpeechLipSyncEngine"
+
+        // Known warm/natural Google TTS voice identifiers prioritized over harsh legacy voices
+        private val PREFERRED_WARM_VOICE_HINTS = listOf(
+            "x-ban", "x-bnf", "x-bnd",       // Warm Bengali neural voices (BD / IN)
+            "x-sfg", "x-tpf", "x-iob", "x-tpc", "x-iol", // Warm English female neural voices
+            "x-eef", "x-vlf", "x-jdf", "x-kof", "x-hif", // Warm Spanish/French/JP/KR/HI neural
+            "female", "wavenet", "neural"
+        )
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -57,16 +68,20 @@ class SpeechLipSyncEngine(private val context: Context) {
     private var speechRecognizer: SpeechRecognizer? = null
     private var lipSyncJob: Job? = null
 
+    private var pendingQueue: ArrayDeque<SpeechSegment> = ArrayDeque()
+    private var activeVoiceTone: VoiceTone = VoiceTone.SWEET_WARM
     @Volatile
     private var currentUtteranceText: String = ""
     @Volatile
-    private var currentSpeechRate: Float = 1.0f
+    private var currentSpeechRate: Float = 0.92f
     @Volatile
     private var activeRangeStart: Int = -1
     @Volatile
     private var activeRangeEnd: Int = -1
     @Volatile
     private var lastRangeTimestampMs: Long = 0L
+    @Volatile
+    private var activeSequenceToken: Long = 0L
 
     private val _isSpeaking = MutableStateFlow(false)
     val isSpeaking: StateFlow<Boolean> = _isSpeaking.asStateFlow()
@@ -97,14 +112,25 @@ class SpeechLipSyncEngine(private val context: Context) {
 
     private fun initTts() {
         try {
-            tts = TextToSpeech(context.applicationContext) { status ->
+            // Prefer Google's high-quality TTS engine when available on device for sweeter voices
+            val googleTtsPkg = "com.google.android.tts"
+            val hasGoogleTts = try {
+                context.packageManager.getPackageInfo(googleTtsPkg, 0)
+                true
+            } catch (_: Exception) {
+                false
+            }
+
+            val listener = TextToSpeech.OnInitListener { status ->
                 isTtsReady = status == TextToSpeech.SUCCESS
                 if (isTtsReady) {
                     tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                         override fun onStart(utteranceId: String?) {
                             mainHandler.post {
-                                _isSpeaking.value = true
-                                startLipSyncDriver()
+                                if (utteranceId?.startsWith("lp_${activeSequenceToken}_") == true) {
+                                    _isSpeaking.value = true
+                                    startLipSyncDriver()
+                                }
                             }
                         }
 
@@ -114,27 +140,47 @@ class SpeechLipSyncEngine(private val context: Context) {
                             end: Int,
                             frame: Int
                         ) {
-                            activeRangeStart = start
-                            activeRangeEnd = end
-                            lastRangeTimestampMs = System.currentTimeMillis()
+                            if (utteranceId?.startsWith("lp_${activeSequenceToken}_") == true) {
+                                activeRangeStart = start
+                                activeRangeEnd = end
+                                lastRangeTimestampMs = System.currentTimeMillis()
+                            }
                         }
 
                         override fun onDone(utteranceId: String?) {
-                            mainHandler.post { finishSpeaking() }
+                            mainHandler.post {
+                                if (utteranceId?.startsWith("lp_${activeSequenceToken}_") == true) {
+                                    playNextQueuedSegment(activeSequenceToken)
+                                }
+                            }
                         }
 
                         @Deprecated("Deprecated in Java")
                         override fun onError(utteranceId: String?) {
-                            mainHandler.post { finishSpeaking() }
+                            mainHandler.post {
+                                if (utteranceId?.startsWith("lp_${activeSequenceToken}_") == true) {
+                                    playNextQueuedSegment(activeSequenceToken)
+                                }
+                            }
                         }
 
                         override fun onError(utteranceId: String?, errorCode: Int) {
-                            mainHandler.post { finishSpeaking() }
+                            mainHandler.post {
+                                if (utteranceId?.startsWith("lp_${activeSequenceToken}_") == true) {
+                                    playNextQueuedSegment(activeSequenceToken)
+                                }
+                            }
                         }
                     })
                 } else {
                     Log.w(TAG, "TextToSpeech init failed with status=$status")
                 }
+            }
+
+            tts = if (hasGoogleTts) {
+                TextToSpeech(context.applicationContext, listener, googleTtsPkg)
+            } else {
+                TextToSpeech(context.applicationContext, listener)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error creating TextToSpeech", e)
@@ -145,49 +191,181 @@ class SpeechLipSyncEngine(private val context: Context) {
         text: String,
         bcp47Locale: String,
         speechRate: Float,
+        voiceTone: VoiceTone = VoiceTone.SWEET_WARM,
         messageId: Long? = null
     ) {
         val cleanText = text.trim()
         if (cleanText.isEmpty()) return
+        speakSegments(
+            segments = listOf(SpeechSegment(text = cleanText, bcp47Locale = bcp47Locale)),
+            speechRate = speechRate,
+            voiceTone = voiceTone,
+            messageId = messageId
+        )
+    }
+
+    /**
+     * Speaks a bilingual sequence of [SpeechSegment]s smoothly, switching to the highest-quality
+     * warm voice for each segment's language (e.g., sweet Bengali explanation + crisp English
+     * pronunciation + sweet Bengali meaning).
+     */
+    fun speakSegments(
+        segments: List<SpeechSegment>,
+        speechRate: Float,
+        voiceTone: VoiceTone = VoiceTone.SWEET_WARM,
+        messageId: Long? = null
+    ) {
+        val validSegments = segments
+            .map { it.copy(text = cleanForSpeech(it.text)) }
+            .filter { it.text.isNotBlank() }
+        if (validSegments.isEmpty()) return
 
         stopListening()
         stopSpeaking()
 
-        currentUtteranceText = cleanText
-        currentSpeechRate = speechRate.coerceIn(0.6f, 1.5f)
+        activeSequenceToken = System.currentTimeMillis()
+        activeVoiceTone = voiceTone
+        currentSpeechRate = (speechRate * voiceTone.rateMultiplier).coerceIn(0.65f, 1.35f)
+        _speakingMessageId.value = messageId
+
+        pendingQueue = ArrayDeque(validSegments)
+        playNextQueuedSegment(activeSequenceToken)
+    }
+
+    private fun playNextQueuedSegment(token: Long) {
+        if (token != activeSequenceToken) return
+        val next = pendingQueue.removeFirstOrNull()
+        if (next == null) {
+            finishSpeaking()
+            return
+        }
+
+        currentUtteranceText = next.text
         activeRangeStart = -1
         activeRangeEnd = -1
         lastRangeTimestampMs = 0L
-        _speakingMessageId.value = messageId
 
         val engine = tts
         if (engine != null && isTtsReady) {
             try {
-                val locale = Locale.forLanguageTag(bcp47Locale)
-                val result = engine.setLanguage(locale)
-                if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                    engine.setLanguage(Locale.US)
-                }
+                applySweetVoiceForLocale(engine, next.bcp47Locale)
                 engine.setSpeechRate(currentSpeechRate)
-                engine.setPitch(1.04f)
-                val utteranceId = "lp_${System.currentTimeMillis()}"
-                val speakStatus = engine.speak(cleanText, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
-                if (speakStatus == TextToSpeech.SUCCESS) {
+                engine.setPitch(activeVoiceTone.pitch)
+
+                val utteranceId = "lp_${token}_${System.nanoTime()}"
+                val status = engine.speak(next.text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+                if (status == TextToSpeech.SUCCESS) {
                     _isSpeaking.value = true
                     startLipSyncDriver()
                     return
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "TTS speak failed, falling back to timed visual lip-sync", e)
+                Log.e(TAG, "TTS speak segment failed, falling back to visual cadence", e)
             }
         }
 
-        // Visual-only speech cadence fallback if device has no TTS voices installed
+        // Visual-only fallback if TTS voice data isn't available on the device
         _isSpeaking.value = true
-        startLipSyncDriver(autoFinishOnEnd = true)
+        startLipSyncDriver(autoAdvanceToken = token)
+    }
+
+    /**
+     * Picks the sweetest, clearest, highest-quality neural voice installed on the Android device
+     * for [bcp47Locale], with smart fallback across regional variants (e.g. `bn-BD` <-> `bn-IN`,
+     * `en-US` <-> `en-GB`).
+     */
+    private fun applySweetVoiceForLocale(engine: TextToSpeech, bcp47Locale: String) {
+        val targetLocale = Locale.forLanguageTag(bcp47Locale)
+        val langCode = targetLocale.language.lowercase(Locale.US)
+
+        val voices = try {
+            engine.voices?.toList().orEmpty()
+        } catch (_: Exception) {
+            emptyList()
+        }
+
+        val matchingVoices = voices.filter { voice ->
+            !voice.isNetworkConnectionRequired.let { false } &&
+                voice.locale != null &&
+                voice.locale.language.equals(langCode, ignoreCase = true) &&
+                !voice.features.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED)
+        }
+
+        val bestVoice = matchingVoices.maxByOrNull { scoreVoiceSweetness(it, targetLocale) }
+        if (bestVoice != null) {
+            engine.voice = bestVoice
+            return
+        }
+
+        // Fallback to setLanguage trying exact locale first, then alternate regional variant
+        val exactRes = engine.setLanguage(targetLocale)
+        if (exactRes == TextToSpeech.LANG_MISSING_DATA || exactRes == TextToSpeech.LANG_NOT_SUPPORTED) {
+            val fallbackLocale = when (langCode) {
+                "bn" -> Locale("bn", "IN")
+                "en" -> Locale.US
+                "es" -> Locale("es", "MX")
+                "pt" -> Locale("pt", "BR")
+                "zh" -> Locale.SIMPLIFIED_CHINESE
+                else -> Locale(langCode)
+            }
+            val fallbackRes = engine.setLanguage(fallbackLocale)
+            if (fallbackRes == TextToSpeech.LANG_MISSING_DATA || fallbackRes == TextToSpeech.LANG_NOT_SUPPORTED) {
+                engine.setLanguage(Locale.US)
+            }
+        }
+    }
+
+    private fun scoreVoiceSweetness(voice: Voice, preferredLocale: Locale): Int {
+        var score = 0
+        val nameLower = voice.name.lowercase(Locale.US)
+
+        // 1. Strongly prefer high/very-high neural quality over harsh legacy voices
+        score += when (voice.quality) {
+            Voice.QUALITY_VERY_HIGH -> 100
+            Voice.QUALITY_HIGH -> 80
+            Voice.QUALITY_NORMAL -> 40
+            Voice.QUALITY_LOW -> 5
+            else -> 0
+        }
+
+        // 2. Prefer exact country match (e.g. bn-BD over bn-IN, en-US over en-AU), slight bonus
+        if (voice.locale.country.equals(preferredLocale.country, ignoreCase = true)) {
+            score += 18
+        }
+
+        // 3. Prefer locally installed low-latency neural voices (no stutter)
+        if (!voice.isNetworkConnectionRequired) {
+            score += 16
+        }
+
+        // 4. Prefer warm/melodic female & neural voice profiles
+        if (PREFERRED_WARM_VOICE_HINTS.any { nameLower.contains(it) }) {
+            score += 35
+        }
+        if (nameLower.contains("local")) {
+            score += 10
+        }
+        // Avoid robotic/novelty/legacy low-fidelity engine tags
+        if (nameLower.contains("espeak") || nameLower.contains("pico") || nameLower.contains("legacy")) {
+            score -= 80
+        }
+
+        return score
+    }
+
+    private fun cleanForSpeech(raw: String): String {
+        return raw
+            .replace("•", "")
+            .replace("—", ", ")
+            .replace("–", ", ")
+            .replace("...", " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
     }
 
     fun stopSpeaking() {
+        activeSequenceToken = System.currentTimeMillis() + 1L
+        pendingQueue.clear()
         try {
             tts?.stop()
         } catch (_: Exception) {
@@ -203,14 +381,13 @@ class SpeechLipSyncEngine(private val context: Context) {
         _lipSyncFrame.value = LipSyncFrame()
     }
 
-    private fun startLipSyncDriver(autoFinishOnEnd: Boolean = false) {
+    private fun startLipSyncDriver(autoAdvanceToken: Long? = null) {
         lipSyncJob?.cancel()
         val text = currentUtteranceText
         val rate = currentSpeechRate
         val startTime = System.currentTimeMillis()
-        // Estimate ~14.5 characters per second at 1.0x speed
-        val charsPerSec = 14.5f * rate
-        val estimatedDurationMs = ((text.length / charsPerSec) * 1000f).toLong().coerceAtLeast(1400L)
+        val charsPerSec = 13.2f * rate
+        val estimatedDurationMs = ((text.length / charsPerSec) * 1000f).toLong().coerceAtLeast(1100L)
 
         lipSyncJob = scope.launch {
             var smoothedOpen = 0f
@@ -221,7 +398,6 @@ class SpeechLipSyncEngine(private val context: Context) {
                 val now = System.currentTimeMillis()
                 val elapsedMs = now - startTime
 
-                // Determine active character window: prefer real TTS onRangeStart when recent (< 650ms)
                 val useRealRange = activeRangeStart >= 0 &&
                     activeRangeStart < text.length &&
                     (now - lastRangeTimestampMs) < 650L
@@ -243,17 +419,16 @@ class SpeechLipSyncEngine(private val context: Context) {
                 val syllablePulse = if (isPause) {
                     0.02f
                 } else {
-                    val wave = 0.78f + 0.22f * sin((elapsedMs / 1000.0) * rate * 17.5 * PI / 2.0).toFloat()
+                    val wave = 0.78f + 0.22f * sin((elapsedMs / 1000.0) * rate * 16.5 * PI / 2.0).toFloat()
                     (targetOpen * wave).coerceIn(0f, 1f)
                 }
 
-                // Smooth envelope so lips open briskly on vowels and close cleanly on pauses
                 val alphaOpen = if (syllablePulse > smoothedOpen) 0.42f else 0.30f
                 smoothedOpen += (syllablePulse - smoothedOpen) * alphaOpen
                 smoothedWidth += (targetWidth - smoothedWidth) * 0.25f
 
-                val targetEnergy = if (isPause) 0.12f else (0.35f + syllablePulse * 0.65f)
-                smoothedEnergy += (targetEnergy - smoothedEnergy) * 0.32f
+                val targetEnergy = if (isPause) 0.10f else (0.34f + syllablePulse * 0.66f)
+                smoothedEnergy += (targetEnergy - smoothedEnergy) * 0.30f
 
                 _lipSyncFrame.value = LipSyncFrame(
                     mouthOpenness = smoothedOpen.coerceIn(0f, 1f),
@@ -263,12 +438,12 @@ class SpeechLipSyncEngine(private val context: Context) {
                     isEmphasis = currentWord.length >= 7 || currentSentence.contains('!')
                 )
 
-                if (autoFinishOnEnd && elapsedMs >= estimatedDurationMs + 250L) {
-                    finishSpeaking()
+                if (autoAdvanceToken != null && elapsedMs >= estimatedDurationMs + 180L) {
+                    playNextQueuedSegment(autoAdvanceToken)
                     break
                 }
 
-                delay(24L) // ~42fps smooth lip & waveform animation
+                delay(24L)
             }
         }
     }
@@ -280,21 +455,17 @@ class SpeechLipSyncEngine(private val context: Context) {
                 Triple(0.03f, 1.0f, true)
             lower.isWhitespace() ->
                 Triple(0.08f, 1.0f, true)
-            // Wide open vowels (Latin, Bengali, Japanese, Arabic, etc.)
-            lower in setOf('a', 'á', 'à', 'â', 'ä', 'o', 'ó', 'ò', 'ô', 'অ', 'আ', 'া', 'あ', 'お', 'ا') -> {
-                val rounded = lower in setOf('o', 'ó', 'ò', 'ô', 'অ', 'お')
-                Triple(0.92f, if (rounded) 0.78f else 1.08f, false)
+            lower in setOf('a', 'á', 'à', 'â', 'ä', 'o', 'ó', 'ò', 'ô', 'অ', 'আ', 'া', 'ও', 'ো', 'あ', 'お', 'ا') -> {
+                val rounded = lower in setOf('o', 'ó', 'ò', 'ô', 'অ', 'ও', 'ো', 'お')
+                Triple(0.90f, if (rounded) 0.78f else 1.08f, false)
             }
-            // Mid / front / rounded vowels
             lower in setOf('e', 'é', 'è', 'i', 'í', 'u', 'ú', 'ü', 'y', 'ই', 'ঈ', 'উ', 'এ', 'ি', 'ী', 'ু', 'ে', 'い', 'う', 'え') -> {
                 val rounded = lower in setOf('u', 'ú', 'ü', 'উ', 'ু', 'う')
                 val spread = lower in setOf('e', 'é', 'i', 'í', 'ই', 'এ', 'い', 'え')
-                Triple(0.60f, if (rounded) 0.74f else if (spread) 1.18f else 1.0f, false)
+                Triple(0.58f, if (rounded) 0.74f else if (spread) 1.18f else 1.0f, false)
             }
-            // Bilabial closures (m, b, p) close briefly
             lower in setOf('m', 'b', 'p', 'ম', 'ব', 'প') ->
                 Triple(0.14f, 0.94f, false)
-            // Soft consonants
             else -> {
                 val mod = abs(sin(elapsedMs * 0.015 * rate)).toFloat()
                 Triple(0.24f + mod * 0.18f, 1.0f, false)
@@ -348,7 +519,6 @@ class SpeechLipSyncEngine(private val context: Context) {
                         }
 
                         override fun onRmsChanged(rmsdB: Float) {
-                            // Normalize typical -2..10 dB SpeechRecognizer range to 0..1
                             val normalized = ((rmsdB + 2f) / 12f).coerceIn(0f, 1f)
                             _micAmplitude.value = normalized
                         }

@@ -292,7 +292,14 @@ class LingoPulseViewModel(
             )
             _isThinking.value = false
             if (settings.autoPlayAudio) {
-                speechEngine.speak(response.spokenText, settings.targetLanguage.bcp47, settings.speechRate, msgId)
+                speakTutorResponse(
+                    spokenText = response.spokenText,
+                    nativeExplanation = response.nativeExplanation,
+                    phrases = response.phrases,
+                    practicePrompt = response.practicePrompt,
+                    settings = settings,
+                    messageId = msgId
+                )
             }
         }
     }
@@ -342,7 +349,14 @@ class LingoPulseViewModel(
         )
         _isThinking.value = false
         if (autoSpeak) {
-            speechEngine.speak(response.spokenText, settings.targetLanguage.bcp47, settings.speechRate, msgId)
+            speakTutorResponse(
+                spokenText = response.spokenText,
+                nativeExplanation = response.nativeExplanation,
+                phrases = response.phrases,
+                practicePrompt = response.practicePrompt,
+                settings = settings,
+                messageId = msgId
+            )
         }
     }
 
@@ -390,12 +404,18 @@ class LingoPulseViewModel(
                 isSampleResponse = response.isSampleResponse
             )
             _isThinking.value = false
-            // Reward active engagement with study time if first turn today
             if (uiState.value.progress.todayMinutes == 0) {
                 learningRepository.logStudyMinutes(1)
             }
             if (settings.autoPlayAudio) {
-                speechEngine.speak(response.spokenText, settings.targetLanguage.bcp47, settings.speechRate, msgId)
+                speakTutorResponse(
+                    spokenText = response.spokenText,
+                    nativeExplanation = response.nativeExplanation,
+                    phrases = response.phrases,
+                    practicePrompt = response.practicePrompt,
+                    settings = settings,
+                    messageId = msgId
+                )
             }
         }
     }
@@ -421,20 +441,113 @@ class LingoPulseViewModel(
             speechEngine.stopSpeaking()
         } else {
             val settings = settingsFlow.value
-            speechEngine.speak(
-                text = message.spokenText,
-                bcp47Locale = settings.targetLanguage.bcp47,
-                speechRate = settings.speechRate,
+            speakTutorResponse(
+                spokenText = message.spokenText,
+                nativeExplanation = message.nativeExplanation,
+                phrases = message.phrases,
+                practicePrompt = message.practicePrompt,
+                settings = settings,
                 messageId = message.id
             )
         }
     }
 
+    private fun speakTutorResponse(
+        spokenText: String,
+        nativeExplanation: String,
+        phrases: List<VocabPhrase>,
+        practicePrompt: String,
+        settings: UserSettings,
+        messageId: Long?
+    ) {
+        val targetLocale = settings.targetLanguage.bcp47
+        val nativeLocale = settings.nativeLanguage.bcp47
+        val segments = mutableListOf<com.example.model.SpeechSegment>()
+
+        if (settings.studyInNativeLanguage) {
+            // Speak warm native intro first (e.g., sweet Bengali voice!)
+            if (nativeExplanation.isNotBlank()) {
+                segments.add(com.example.model.SpeechSegment(nativeExplanation, nativeLocale))
+            } else if (spokenText.isNotBlank()) {
+                segments.add(com.example.model.SpeechSegment(spokenText, targetLocale))
+            }
+            // Speak each Target Language phrase in Target voice + its Native meaning in Native voice
+            phrases.forEach { phrase ->
+                if (phrase.targetText.isNotBlank()) {
+                    segments.add(com.example.model.SpeechSegment(phrase.targetText, targetLocale))
+                }
+                if (phrase.nativeMeaning.isNotBlank()) {
+                    segments.add(com.example.model.SpeechSegment(phrase.nativeMeaning, nativeLocale))
+                }
+            }
+            // Speak friendly follow-up question in Native voice
+            if (practicePrompt.isNotBlank()) {
+                segments.add(com.example.model.SpeechSegment(practicePrompt, nativeLocale))
+            }
+        } else {
+            if (spokenText.isNotBlank()) {
+                segments.add(com.example.model.SpeechSegment(spokenText, targetLocale))
+            }
+            phrases.forEach { phrase ->
+                if (phrase.targetText.isNotBlank()) {
+                    segments.add(com.example.model.SpeechSegment(phrase.targetText, targetLocale))
+                }
+            }
+        }
+
+        speechEngine.speakSegments(
+            segments = segments,
+            speechRate = settings.speechRate,
+            voiceTone = settings.voiceTone,
+            messageId = messageId
+        )
+    }
+
     fun speakPhrase(text: String, langBcp47: String = settingsFlow.value.targetLanguage.bcp47) {
+        val settings = settingsFlow.value
         speechEngine.speak(
             text = text,
             bcp47Locale = langBcp47,
-            speechRate = settingsFlow.value.speechRate,
+            speechRate = settings.speechRate,
+            voiceTone = settings.voiceTone,
+            messageId = null
+        )
+    }
+
+    fun speakPhraseWithMeaning(phrase: VocabPhrase) {
+        val settings = settingsFlow.value
+        val segments = buildList {
+            add(com.example.model.SpeechSegment(phrase.targetText, settings.targetLanguage.bcp47))
+            if (settings.studyInNativeLanguage && phrase.nativeMeaning.isNotBlank()) {
+                add(com.example.model.SpeechSegment(phrase.nativeMeaning, settings.nativeLanguage.bcp47))
+            }
+        }
+        speechEngine.speakSegments(
+            segments = segments,
+            speechRate = settings.speechRate,
+            voiceTone = settings.voiceTone,
+            messageId = null
+        )
+    }
+
+    fun testSweetVoice() {
+        val settings = settingsFlow.value
+        val isBn = settings.nativeLanguageCode == "bn"
+        val segments = if (isBn) {
+            listOf(
+                com.example.model.SpeechSegment("নমস্কার! আমি আরিয়া। চলুন একসাথে সুন্দরভাবে ভাষা শিখি।", settings.nativeLanguage.bcp47),
+                com.example.model.SpeechSegment("Hello! Good morning!", settings.targetLanguage.bcp47),
+                com.example.model.SpeechSegment("সকালে শুভেচ্ছা জানাতে এটি ব্যবহার করা হয়।", settings.nativeLanguage.bcp47)
+            )
+        } else {
+            listOf(
+                com.example.model.SpeechSegment("Hello! I am Aria, your language tutor.", settings.targetLanguage.bcp47)
+            )
+        }
+        speechEngine.speakSegments(
+            segments = segments,
+            speechRate = settings.speechRate,
+            voiceTone = settings.voiceTone,
             messageId = null
         )
     }
@@ -533,27 +646,40 @@ class LingoPulseViewModel(
     }
 
     fun setStudyInNativeLanguage(enabled: Boolean) {
-        viewModelScope.launch { settingsRepository.setStudyInNativeLanguage(enabled) }
+        viewModelScope.launch {
+            settingsRepository.setStudyInNativeLanguage(enabled)
+            delay(120)
+            refreshCurrentLessonIntro()
+        }
     }
 
     fun setTargetLanguage(code: String) {
         viewModelScope.launch {
             settingsRepository.setTargetLanguage(code)
-            showBanner("Target language updated — Aria adapted!")
+            val lang = com.example.model.WorldLanguagesCatalog.byCode(code)
+            showBanner("Target language: ${lang.flag} ${lang.englishName}")
+            delay(150)
+            refreshCurrentLessonIntro()
         }
     }
 
     fun setNativeLanguage(code: String) {
         viewModelScope.launch {
             settingsRepository.setNativeLanguage(code)
-            showBanner("Native language updated — explanations adapted!")
+            val lang = com.example.model.WorldLanguagesCatalog.byCode(code)
+            showBanner("Native language: ${lang.flag} ${lang.nativeName}")
+            delay(150)
+            refreshCurrentLessonIntro()
         }
     }
 
     fun setLevel(level: LanguageLevel) {
         viewModelScope.launch {
             settingsRepository.setLevel(level)
-            showBanner("Level set to ${level.label} (${level.cefr})")
+            val isBn = settingsFlow.value.nativeLanguageCode == "bn"
+            showBanner(if (isBn) "স্তর: ${level.bnLabel} (${level.cefr})" else "Level: ${level.label} (${level.cefr})")
+            delay(150)
+            refreshCurrentLessonIntro()
         }
     }
 
@@ -575,6 +701,13 @@ class LingoPulseViewModel(
 
     fun setAutoPlayAudio(enabled: Boolean) {
         viewModelScope.launch { settingsRepository.setAutoPlayAudio(enabled) }
+    }
+
+    fun setVoiceTone(tone: com.example.model.VoiceTone) {
+        viewModelScope.launch {
+            settingsRepository.setVoiceTone(tone)
+            showBanner("Voice: ${tone.label} (${tone.bnLabel})")
+        }
     }
 
     fun resetAllProgress() {

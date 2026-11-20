@@ -97,6 +97,7 @@ fun ChatWorkspace(
     isPlaceholderAi: Boolean,
     onPlayMessageAudio: (ChatMessageUi) -> Unit,
     onSpeakPhrase: (String) -> Unit,
+    onSpeakPhraseWithMeaning: (VocabPhrase) -> Unit,
     onSaveVocab: (VocabPhrase) -> Unit,
     onToggleHelper: (Long) -> Unit,
     onToggleVoice: () -> Unit,
@@ -183,7 +184,7 @@ fun ChatWorkspace(
                         savedVocabTexts = savedVocabTexts,
                         onPlayAudio = { onPlayMessageAudio(msg) },
                         onToggleHelper = { onToggleHelper(msg.id) },
-                        onSpeakPhrase = onSpeakPhrase,
+                        onSpeakPhrase = onSpeakPhraseWithMeaning,
                         onSaveVocab = onSaveVocab
                     )
                 }
@@ -561,137 +562,145 @@ private fun TutorMessageCard(
     savedVocabTexts: Set<String>,
     onPlayAudio: () -> Unit,
     onToggleHelper: () -> Unit,
-    onSpeakPhrase: (String) -> Unit,
+    onSpeakPhrase: (VocabPhrase) -> Unit,
     onSaveVocab: (VocabPhrase) -> Unit
 ) {
-    Card(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp, 22.dp, 22.dp, 6.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(
-            width = if (isPlayingThis) 1.5.dp else 1.dp,
-            color = if (isPlayingThis) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outlineVariant
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            // Gentle Grammar/Pronunciation Feedback Pill (if replying to user)
-            if (!message.grammarFeedback.isNullOrBlank()) {
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = EmeraldSuccess.copy(alpha = 0.12f),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 10.dp)
+        // Gentle Grammar/Pronunciation Feedback Pill (when replying to user)
+        if (!message.grammarFeedback.isNullOrBlank()) {
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = EmeraldSuccess.copy(alpha = 0.12f),
+                modifier = Modifier.fillMaxWidth(0.92f)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.Top
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.CheckCircle,
-                            contentDescription = null,
-                            tint = EmeraldSuccess,
-                            modifier = Modifier
-                                .padding(top = 1.dp)
-                                .size(16.dp)
-                        )
-                        Spacer(Modifier.width(7.dp))
-                        Text(
-                            text = message.grammarFeedback,
-                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                }
-            }
-
-            // Primary Spoken Target Language Text
-            Text(
-                text = message.spokenText,
-                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            // Native Language Explanation & Breakdown Helper
-            AnimatedVisibility(visible = isHelperVisible && message.nativeExplanation.isNotBlank()) {
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 10.dp)
-                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.CheckCircle,
+                        contentDescription = null,
+                        tint = EmeraldSuccess,
+                        modifier = Modifier
+                            .padding(top = 1.dp)
+                            .size(16.dp)
+                    )
+                    Spacer(Modifier.width(7.dp))
                     Text(
-                        text = message.nativeExplanation,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(10.dp)
+                        text = message.grammarFeedback,
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
+        }
 
-            // Bulleted Key Phrases with Pronunciation & Native Meanings
-            if (message.phrases.isNotEmpty()) {
-                Spacer(Modifier.height(10.dp))
-                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                    message.phrases.forEach { phrase ->
-                        val isSaved = savedVocabTexts.contains(phrase.targetText)
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.34f),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onSpeakPhrase(phrase.targetText) }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "• ${phrase.targetText}",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    if (phrase.pronunciation.isNotBlank()) {
-                                        Text(
-                                            text = phrase.pronunciation,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                    if (isHelperVisible && phrase.nativeMeaning.isNotBlank()) {
-                                        Text(
-                                            text = phrase.nativeMeaning,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                                IconButton(
-                                    onClick = { onSpeakPhrase(phrase.targetText) },
-                                    modifier = Modifier.size(36.dp)
+        // 1. Warm Native/Target Opener Bubble + Side Translate & Play Controls
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top
+        ) {
+            Card(
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(20.dp, 20.dp, 20.dp, 6.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(
+                    width = if (isPlayingThis) 1.5.dp else 1.dp,
+                    color = if (isPlayingThis) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outlineVariant
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                    val primaryHeader = if (isHelperVisible && message.nativeExplanation.isNotBlank()) {
+                        message.nativeExplanation
+                    } else {
+                        message.spokenText
+                    }
+                    Text(
+                        text = primaryHeader,
+                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    // Bulleted Target–Native Phrase List (clean Learna-inspired format: "• Hello – হ্যালো বলার জন্য।")
+                    if (message.phrases.isNotEmpty()) {
+                        Spacer(Modifier.height(10.dp))
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            message.phrases.forEach { phrase ->
+                                val isSaved = savedVocabTexts.contains(phrase.targetText)
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onSpeakPhrase(phrase) }
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Rounded.VolumeUp,
-                                        contentDescription = stringResource(R.string.action_play_audio),
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                                IconButton(
-                                    onClick = { onSaveVocab(phrase) },
-                                    modifier = Modifier.size(36.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = if (isSaved) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
-                                        contentDescription = stringResource(
-                                            if (isSaved) R.string.cd_saved_vocab else R.string.cd_save_vocab
-                                        ),
-                                        tint = if (isSaved) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(18.dp)
-                                    )
+                                    Row(
+                                        modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 9.dp, bottom = 9.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            val formattedLine = androidx.compose.ui.text.buildAnnotatedString {
+                                                pushStyle(
+                                                    androidx.compose.ui.text.SpanStyle(
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                )
+                                                append("• ${phrase.targetText}")
+                                                pop()
+                                                if (isHelperVisible && phrase.nativeMeaning.isNotBlank()) {
+                                                    pushStyle(
+                                                        androidx.compose.ui.text.SpanStyle(
+                                                            fontWeight = FontWeight.Normal,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+                                                    )
+                                                    append(" – ${phrase.nativeMeaning}")
+                                                    pop()
+                                                }
+                                            }
+                                            Text(
+                                                text = formattedLine,
+                                                style = MaterialTheme.typography.bodyLarge
+                                            )
+                                            if (isHelperVisible && phrase.pronunciation.isNotBlank()) {
+                                                Spacer(Modifier.height(2.dp))
+                                                Text(
+                                                    text = phrase.pronunciation,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                        }
+                                        IconButton(
+                                            onClick = { onSpeakPhrase(phrase) },
+                                            modifier = Modifier.size(34.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.AutoMirrored.Rounded.VolumeUp,
+                                                contentDescription = stringResource(R.string.action_play_audio),
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = { onSaveVocab(phrase) },
+                                            modifier = Modifier.size(34.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = if (isSaved) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+                                                contentDescription = stringResource(
+                                                    if (isSaved) R.string.cd_saved_vocab else R.string.cd_save_vocab
+                                                ),
+                                                tint = if (isSaved) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -699,64 +708,68 @@ private fun TutorMessageCard(
                 }
             }
 
-            // Practice Prompt Callout
-            if (message.practicePrompt.isNotBlank()) {
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    text = message.practicePrompt,
-                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.secondary
-                )
-            }
+            Spacer(Modifier.width(6.dp))
 
-            // Footer Action Row: Play Audio + Helper Toggle
-            Spacer(Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            // Side Circular Action Buttons (Translate Helper & Play Audio — matching screenshot!)
+            Column(
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Surface(
                     onClick = onPlayAudio,
-                    shape = RoundedCornerShape(50),
+                    shape = CircleShape,
                     color = if (isPlayingThis) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier.testTag("play_audio_msg_${message.id}")
+                    modifier = Modifier
+                        .size(38.dp)
+                        .testTag("play_audio_msg_${message.id}")
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = if (isPlayingThis) Icons.Rounded.Stop else Icons.AutoMirrored.Rounded.VolumeUp,
-                            contentDescription = null,
+                            contentDescription = stringResource(
+                                if (isPlayingThis) R.string.action_stop_audio else R.string.action_play_audio
+                            ),
                             tint = if (isPlayingThis) Color.White else MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            text = stringResource(if (isPlayingThis) R.string.action_stop_audio else R.string.action_play_audio),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (isPlayingThis) Color.White else MaterialTheme.colorScheme.onPrimaryContainer
+                            modifier = Modifier.size(19.dp)
                         )
                     }
                 }
-
-                TextButton(
+                Surface(
                     onClick = onToggleHelper,
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                    modifier = Modifier.testTag("toggle_helper_msg_${message.id}")
+                    shape = CircleShape,
+                    color = if (isHelperVisible) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .testTag("toggle_helper_msg_${message.id}")
                 ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Translate,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(Modifier.width(5.dp))
-                    Text(
-                        text = stringResource(if (isHelperVisible) R.string.action_hide_helper else R.string.action_show_helper),
-                        style = MaterialTheme.typography.labelMedium
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Rounded.Translate,
+                            contentDescription = stringResource(
+                                if (isHelperVisible) R.string.action_hide_helper else R.string.action_show_helper
+                            ),
+                            tint = if (isHelperVisible) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
+            }
+        }
+
+        // 2. Clean Conversational Follow-up Bubble (e.g., "এখানে কিছু জানতে চান? কিছু জিজ্ঞেস করতে চান?")
+        if (message.practicePrompt.isNotBlank()) {
+            Surface(
+                shape = RoundedCornerShape(18.dp, 18.dp, 18.dp, 6.dp),
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                modifier = Modifier.fillMaxWidth(0.86f)
+            ) {
+                Text(
+                    text = message.practicePrompt,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                )
             }
         }
     }
