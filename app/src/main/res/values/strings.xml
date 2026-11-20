@@ -1,0 +1,74 @@
+<resources>
+    <string name="app_name">LingoPulse</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">Home</string>
+    <string name="nav_roleplay">Role-Play</string>
+    <string name="nav_progress">Progress</string>
+    <string name="nav_profile">Profile</string>
+
+    <!-- Avatar Stage -->
+    <string name="avatar_name">Aria AI Tutor</string>
+    <string name="avatar_state_idle">Ready</string>
+    <string name="avatar_state_listening">Listening…</string>
+    <string name="avatar_state_thinking">Thinking…</string>
+    <string name="avatar_state_speaking">Speaking</string>
+    <string name="mode_lecture">Lecture</string>
+    <string name="mode_practice">Practice</string>
+    <string name="cd_expand_stage">Expand avatar stage</string>
+    <string name="cd_collapse_stage">Collapse avatar stage</string>
+    <string name="cd_minimize_stage">Minimize avatar stage</string>
+    <string name="cd_show_stage">Show avatar stage</string>
+    <string name="cd_speed_toggle">Change playback speed</string>
+
+    <!-- Chat & Actions -->
+    <string name="sample_ai_notice">Sample Tutor Mode · Connect Firebase AI Logic for live Gemini responses</string>
+    <string name="action_type">Type</string>
+    <string name="action_speak">Speak</string>
+    <string name="action_stop">Stop</string>
+    <string name="action_inspire">Inspire</string>
+    <string name="action_play_audio">Play Audio</string>
+    <string name="action_stop_audio">Stop Audio</string>
+    <string name="action_show_helper">Native Helper</string>
+    <string name="action_hide_helper">Hide Helper</string>
+    <string name="action_send">Send</string>
+    <string name="action_complete_lesson">Log Lesson</string>
+    <string name="placeholder_message">Type your response…</string>
+    <string name="inspire_title">Try saying one of these</string>
+    <string name="mic_permission_needed">Microphone permission is needed for voice practice. You can also tap Type to chat.</string>
+    <string name="cd_save_vocab">Save phrase to vocabulary</string>
+    <string name="cd_saved_vocab">Phrase saved to vocabulary</string>
+
+    <!-- Role-Play -->
+    <string name="roleplay_title">Role-Play Studio</string>
+    <string name="roleplay_subtitle">Practice real-life conversations tailored to your interests</string>
+    <string name="roleplay_for_you">Matches Your Interests</string>
+    <string name="roleplay_start">Start Role-Play</string>
+    <string name="cd_back">Navigate back</string>
+
+    <!-- Progress -->
+    <string name="progress_title">Your Progress</string>
+    <string name="progress_daily_goal">Daily Goal</string>
+    <string name="progress_streak">Day Streak</string>
+    <string name="progress_lessons">Lessons</string>
+    <string name="progress_vocab">Vocab</string>
+    <string name="progress_weekly_activity">7-Day Study Minutes</string>
+    <string name="progress_vocab_bank">Vocabulary Practiced</string>
+    <string name="progress_vocab_empty">Tap the bookmark icon on any lesson phrase to build your personal vocabulary deck.</string>
+
+    <!-- Profile & Settings -->
+    <string name="profile_title">Profile &amp; Learning</string>
+    <string name="setting_study_native">Study in Native Language</string>
+    <string name="setting_study_native_desc">Show explanations &amp; tips in your native language</string>
+    <string name="setting_target_lang">Target Language</string>
+    <string name="setting_level">Language Level</string>
+    <string name="setting_native_lang">Native Language</string>
+    <string name="setting_interests">Interests</string>
+    <string name="setting_daily_goal">Daily Goal</string>
+    <string name="setting_daily_reminder">Daily Reminder</string>
+    <string name="search_language_hint">Search any language…</string>
+    <string name="edit_profile_title">Edit Profile</string>
+    <string name="settings_sheet_title">Tutor Audio &amp; App Settings</string>
+    <string name="cd_edit_avatar">Edit profile photo</string>
+    <string name="cd_app_settings">Open app settings</string>
+</resources>

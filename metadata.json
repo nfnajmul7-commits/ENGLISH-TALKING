@@ -1,0 +1,6 @@
+{
+  "name": "LingoPulse",
+  "description": "Interactive language learning app with an animated lip-syncing AI tutor avatar, structured native-language lessons, role-play scenarios, voice practice, and progress tracking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
