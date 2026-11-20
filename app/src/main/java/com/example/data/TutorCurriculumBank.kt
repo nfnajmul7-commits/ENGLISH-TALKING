@@ -224,6 +224,24 @@ object TutorCurriculumBank {
         return when (module) {
             LearningModule.CONVERSATION -> progressiveLessonPhrases(targetCode, nativeCode, level, topic)
 
+            LearningModule.ASK_INFO -> listOf(
+                VocabPhrase(
+                    targetText = "Can you tell me about Artificial Intelligence?",
+                    pronunciation = "ক্যান ইউ টেল মি অ্যাবাউট আর্টিফিশিয়াল ইন্টেলিজেন্স?",
+                    nativeMeaning = if (isBn) "যেকোনো বিজ্ঞান, ইতিহাস, দেশ বা আধুনিক বিষয়ের তথ্য জানতে চাইলে।" else "Ask about science, history, countries, or tech."
+                ),
+                VocabPhrase(
+                    targetText = "What time is it and what is today's date?",
+                    pronunciation = "হোয়াট টাইম ইজ ইট অ্যান্ড হোয়াট ইজ টুডেজ ডেট?",
+                    nativeMeaning = if (isBn) "বর্তমান সময়, তারিখ, গণিত বা ইউনিট কনভার্ট জানতে চাইলে।" else "Check live time, date, math, or unit conversions."
+                ),
+                VocabPhrase(
+                    targetText = "Could you explain that more simply?",
+                    pronunciation = "কুড ইউ এক্সপ্লেইন দ্যাট মোর সিম্পলি?",
+                    nativeMeaning = if (isBn) "কোনো উত্তর আরও সহজ করে বুঝতে চাইলে বলুন 'সহজ করে বলো'।" else "Ask for a simpler breakdown anytime."
+                )
+            )
+
             LearningModule.TRANSLATE -> listOf(
                 VocabPhrase(
                     targetText = "Not sure if you heard about this.",

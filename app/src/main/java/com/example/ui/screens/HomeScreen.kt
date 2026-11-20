@@ -49,6 +49,7 @@ fun HomeScreen(
     onToggleStageExpanded: () -> Unit,
     onToggleStageCollapsed: () -> Unit,
     onToggleVoice: () -> Unit,
+    onToggleMicLanguage: () -> Unit,
     onClearVoiceError: () -> Unit,
     onStopAudio: () -> Unit,
     onPlayMessageAudio: (ChatMessageUi) -> Unit,
@@ -240,6 +241,8 @@ fun HomeScreen(
             onSendMessage = onSendMessage,
             onToggleInspire = onToggleInspire,
             quickReplies = uiState.activeQuickReplies,
+            micLanguageFlag = if (uiState.voiceInputUsesNative) settings.nativeLanguage.flag else settings.targetLanguage.flag,
+            onToggleMicLanguage = onToggleMicLanguage,
             modifier = Modifier.weight(1f)
         )
     }

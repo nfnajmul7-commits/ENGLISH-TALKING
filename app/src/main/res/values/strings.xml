@@ -22,7 +22,7 @@
     <string name="cd_speed_toggle">Change playback speed</string>
 
     <!-- Chat & Actions -->
-    <string name="sample_ai_notice">Live Translation &amp; Dictionary active · Connect Firebase AI Logic for full Gemini AI</string>
+    <string name="sample_ai_notice">Live Knowledge, Translation &amp; Dictionary active · Connect Firebase AI Logic for full Gemini AI</string>
     <string name="action_type">Type</string>
     <string name="action_speak">Speak</string>
     <string name="action_stop">Stop</string>
@@ -33,7 +33,7 @@
     <string name="action_hide_helper">Hide Helper</string>
     <string name="action_send">Send</string>
     <string name="action_complete_lesson">Log Lesson</string>
-    <string name="placeholder_message">Ask any word meaning or type a message…</string>
+    <string name="placeholder_message">Ask any info, word meaning, or chat…</string>
     <string name="inspire_title">Try saying one of these</string>
     <string name="mic_permission_needed">Microphone permission is needed for voice practice. You can also tap Type to chat.</string>
     <string name="cd_save_vocab">Save phrase to vocabulary</string>

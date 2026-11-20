@@ -69,6 +69,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -109,6 +111,8 @@ fun ChatWorkspace(
     onSendMessage: (String) -> Unit,
     onToggleInspire: () -> Unit,
     quickReplies: List<String> = emptyList(),
+    micLanguageFlag: String = "🇺🇸",
+    onToggleMicLanguage: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -460,7 +464,7 @@ fun ChatWorkspace(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                    .padding(horizontal = 10.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -473,49 +477,74 @@ fun ChatWorkspace(
                     tag = "type_toggle_button"
                 )
 
-                // Prominent Speak / Stop Voice Button
+                // Prominent Speak / Stop Voice Button + Quick Mic Language Toggle (🇧🇩 / 🇺🇸)
                 val isListening = avatarState == AvatarState.LISTENING
-                Surface(
-                    onClick = {
-                        if (isListening) {
-                            onToggleVoice()
-                        } else {
-                            val hasPerm = ContextCompat.checkSelfPermission(
-                                context,
-                                Manifest.permission.RECORD_AUDIO
-                            ) == PackageManager.PERMISSION_GRANTED
-                            if (hasPerm) {
-                                permissionDeniedNotice = false
-                                onToggleVoice()
-                            } else {
-                                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (onToggleMicLanguage != null) {
+                        Surface(
+                            onClick = onToggleMicLanguage,
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .semantics { contentDescription = "Switch voice input language" }
+                                .testTag("toggle_mic_lang_button")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = micLanguageFlag,
+                                    style = MaterialTheme.typography.titleMedium
+                                )
                             }
                         }
-                    },
-                    shape = RoundedCornerShape(50),
-                    color = if (isListening) StageCoralPulse else MaterialTheme.colorScheme.primary,
-                    shadowElevation = 4.dp,
-                    modifier = Modifier
-                        .height(50.dp)
-                        .testTag("speak_mic_button")
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 26.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
+                    }
+
+                    Surface(
+                        onClick = {
+                            if (isListening) {
+                                onToggleVoice()
+                            } else {
+                                val hasPerm = ContextCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.RECORD_AUDIO
+                                ) == PackageManager.PERMISSION_GRANTED
+                                if (hasPerm) {
+                                    permissionDeniedNotice = false
+                                    onToggleVoice()
+                                } else {
+                                    micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                }
+                            }
+                        },
+                        shape = RoundedCornerShape(50),
+                        color = if (isListening) StageCoralPulse else MaterialTheme.colorScheme.primary,
+                        shadowElevation = 4.dp,
+                        modifier = Modifier
+                            .height(50.dp)
+                            .testTag("speak_mic_button")
                     ) {
-                        Icon(
-                            imageVector = if (isListening) Icons.Rounded.Stop else Icons.Rounded.Mic,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = stringResource(if (isListening) R.string.action_stop else R.string.action_speak),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = Color.White
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = if (isListening) Icons.Rounded.Stop else Icons.Rounded.Mic,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(5.dp))
+                            Text(
+                                text = stringResource(if (isListening) R.string.action_stop else R.string.action_speak),
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                                color = Color.White,
+                                maxLines = 1
+                            )
+                        }
                     }
                 }
 
@@ -549,20 +578,21 @@ private fun DockSecondaryButton(
             .testTag(tag)
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp),
+            modifier = Modifier.padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
                 tint = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(19.dp)
+                modifier = Modifier.size(18.dp)
             )
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.width(4.dp))
             Text(
                 text = label,
-                style = MaterialTheme.typography.labelLarge,
-                color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                style = MaterialTheme.typography.labelMedium,
+                color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1
             )
         }
     }

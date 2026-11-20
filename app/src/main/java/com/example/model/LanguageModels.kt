@@ -110,6 +110,7 @@ enum class LearningModule(
     val hint: String
 ) {
     CONVERSATION("conversation", "💬", "Conversation", "কথোপকথন", "Natural back-and-forth speaking"),
+    ASK_INFO("ask_info", "🌐", "Ask Anything", "যেকোনো তথ্য", "Instant live answers on any topic, science, history & more"),
     TRANSLATE("translate", "🔍", "Meaning & Translate", "অর্থ ও অনুবাদ", "Ask any word or sentence meaning live"),
     GRAMMAR("grammar", "📖", "Grammar & Tense", "গ্রামার ও টেন্স", "Tenses, prepositions & sentence rules"),
     VOCABULARY("vocabulary", "🔤", "Vocabulary", "শব্দভান্ডার", "Useful words with definitions & examples"),

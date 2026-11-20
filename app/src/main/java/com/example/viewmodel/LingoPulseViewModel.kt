@@ -61,7 +61,8 @@ data class LingoPulseUiState(
     val hiddenHelperMessageIds: Set<Long> = emptySet(),
     val sessionSeconds: Int = 0,
     val isPlaceholderAi: Boolean = true,
-    val statusBannerMessage: String? = null
+    val statusBannerMessage: String? = null,
+    val voiceInputUsesNative: Boolean = false
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -78,6 +79,7 @@ class LingoPulseViewModel(
     private val _activeTopic = MutableStateFlow("Daily Life")
     private val _activeScenario = MutableStateFlow<RolePlayScenario?>(null)
     private val _activeQuickReplies = MutableStateFlow<List<String>>(emptyList())
+    private val _voiceInputUsesNative = MutableStateFlow(false)
     private val _isThinking = MutableStateFlow(false)
     private val _isStageExpanded = MutableStateFlow(false)
     private val _isStageCollapsed = MutableStateFlow(false)
@@ -161,8 +163,8 @@ class LingoPulseViewModel(
         NavContextBundle(tab, mode, topic, scenario, thinking)
     }
 
-    private val moduleStateFlow = combine(_activeModule, _activeQuickReplies) { mod, replies ->
-        mod to replies
+    private val moduleStateFlow = combine(_activeModule, _activeQuickReplies, _voiceInputUsesNative) { mod, replies, voiceNative ->
+        ModuleUiBundle(mod, replies, voiceNative)
     }
 
     val uiState: StateFlow<LingoPulseUiState> = combine(
@@ -186,18 +188,17 @@ class LingoPulseViewModel(
         val stage = values[5] as StageAudioBundle
         val controls = values[6] as StageControlsBundle
         val helper = values[7] as HelperBundle
-        @Suppress("UNCHECKED_CAST")
-        val modulePair = values[8] as Pair<LearningModule, List<String>>
+        val modBundle = values[8] as ModuleUiBundle
 
         LingoPulseUiState(
             activeTab = nav.tab,
             settings = settings,
             tutorMode = nav.mode,
-            activeModule = modulePair.first,
+            activeModule = modBundle.module,
             activeTopic = nav.topic,
             activeScenario = nav.scenario,
             messages = messages,
-            activeQuickReplies = modulePair.second,
+            activeQuickReplies = modBundle.quickReplies,
             savedVocab = vocab,
             progress = progress,
             avatarState = stage.avatarState,
@@ -216,7 +217,8 @@ class LingoPulseViewModel(
             hiddenHelperMessageIds = helper.hiddenHelpers,
             sessionSeconds = controls.seconds,
             isPlaceholderAi = aiTutorRepository.isPlaceholderMode,
-            statusBannerMessage = helper.banner
+            statusBannerMessage = helper.banner,
+            voiceInputUsesNative = modBundle.voiceInputUsesNative
         )
     }.stateIn(
         scope = viewModelScope,
@@ -271,8 +273,12 @@ class LingoPulseViewModel(
         _activeModule.value = module
         _isInspireVisible.value = false
         _activeQuickReplies.value = emptyList()
-        if (module == LearningModule.TRANSLATE) {
+        val settings = settingsFlow.value
+        if (module == LearningModule.TRANSLATE || module == LearningModule.ASK_INFO) {
             _isTextInputVisible.value = true
+            _voiceInputUsesNative.value = settings.studyInNativeLanguage
+        } else {
+            _voiceInputUsesNative.value = false
         }
         viewModelScope.launch {
             val key = "home_mod_${module.id}"
@@ -483,13 +489,26 @@ class LingoPulseViewModel(
         }
     }
 
+    fun toggleVoiceInputLanguage() {
+        val next = !_voiceInputUsesNative.value
+        _voiceInputUsesNative.value = next
+        val settings = settingsFlow.value
+        val lang = if (next) settings.nativeLanguage else settings.targetLanguage
+        showBanner("Mic: ${lang.flag} ${lang.nativeName}")
+    }
+
     fun toggleVoiceListening() {
         if (speechEngine.isListening.value) {
             speechEngine.stopListening()
         } else {
             _isInspireVisible.value = false
-            val targetLocale = settingsFlow.value.targetLanguage.bcp47
-            speechEngine.startListening(targetLocale) { transcript ->
+            val settings = settingsFlow.value
+            val locale = if (_voiceInputUsesNative.value) {
+                settings.nativeLanguage.bcp47
+            } else {
+                settings.targetLanguage.bcp47
+            }
+            speechEngine.startListening(locale) { transcript ->
                 sendUserMessage(transcript)
             }
         }
@@ -531,19 +550,24 @@ class LingoPulseViewModel(
             // Speak warm native intro first (strip decorative emojis for clean sweet speech)
             val cleanIntro = cleanForSpeech(nativeExplanation)
             if (cleanIntro.isNotBlank()) {
-                // If intro contains a separate English line followed by 🇧🇩 Bengali line, split them into right voices!
-                if (nativeExplanation.contains("🇧🇩")) {
-                    val parts = nativeExplanation.split("🇧🇩", limit = 2)
-                    val targetPart = cleanForSpeech(parts[0])
-                    val nativePart = cleanForSpeech(parts.getOrNull(1).orEmpty())
-                    if (targetPart.isNotBlank()) {
-                        segments.add(com.example.model.SpeechSegment(targetPart, targetLocale))
+                when {
+                    nativeExplanation.contains("🇧🇩") -> {
+                        val parts = nativeExplanation.split("🇧🇩", limit = 2)
+                        val targetPart = cleanForSpeech(parts[0])
+                        val nativePart = cleanForSpeech(parts.getOrNull(1).orEmpty())
+                        if (targetPart.isNotBlank()) segments.add(com.example.model.SpeechSegment(targetPart, targetLocale))
+                        if (nativePart.isNotBlank()) segments.add(com.example.model.SpeechSegment(nativePart, nativeLocale))
                     }
-                    if (nativePart.isNotBlank()) {
-                        segments.add(com.example.model.SpeechSegment(nativePart, nativeLocale))
+                    nativeExplanation.contains("🇬🇧") -> {
+                        val parts = nativeExplanation.split("🇬🇧", limit = 2)
+                        val nativePart = cleanForSpeech(parts[0])
+                        val targetPart = cleanForSpeech(parts.getOrNull(1).orEmpty())
+                        if (nativePart.isNotBlank()) segments.add(com.example.model.SpeechSegment(nativePart, nativeLocale))
+                        if (targetPart.isNotBlank()) segments.add(com.example.model.SpeechSegment(targetPart, targetLocale))
                     }
-                } else {
-                    segments.add(com.example.model.SpeechSegment(cleanIntro, nativeLocale))
+                    else -> {
+                        segments.add(com.example.model.SpeechSegment(cleanIntro, nativeLocale))
+                    }
                 }
             } else if (spokenText.isNotBlank()) {
                 segments.add(com.example.model.SpeechSegment(cleanForSpeech(spokenText), targetLocale))
@@ -583,7 +607,7 @@ class LingoPulseViewModel(
     }
 
     private fun cleanForSpeech(raw: String): String =
-        raw.replace(Regex("[🔍📖🎯💬🔤🗣️💼✈️🇧🇩✅💡🎉•«»]"), " ")
+        raw.replace(Regex("[🔍📖🎯💬🔤🗣️💼✈️🌐⏰📅🧮🇧🇩🇬🇧✅💡🎉•«»*]"), " ")
             .replace(Regex("\\s+"), " ")
             .trim()
 
@@ -859,6 +883,12 @@ class LingoPulseViewModel(
         val topic: String,
         val scenario: RolePlayScenario?,
         val thinking: Boolean
+    )
+
+    private data class ModuleUiBundle(
+        val module: LearningModule,
+        val quickReplies: List<String>,
+        val voiceInputUsesNative: Boolean
     )
 
     class Factory(
