@@ -294,6 +294,7 @@ fun RolePlayScreen(
             onTextDraftChange = onTextDraftChange,
             onSendMessage = onSendMessage,
             onToggleInspire = onToggleInspire,
+            quickReplies = uiState.activeQuickReplies,
             modifier = Modifier.weight(1f)
         )
     }

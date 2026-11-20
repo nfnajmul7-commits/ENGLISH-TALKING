@@ -15,6 +15,7 @@ import com.example.model.AvatarState
 import com.example.model.ChatMessageUi
 import com.example.model.InspireSuggestion
 import com.example.model.LanguageLevel
+import com.example.model.LearningModule
 import com.example.model.RolePlayScenario
 import com.example.model.TutorMode
 import com.example.model.UserSettings
@@ -37,9 +38,11 @@ data class LingoPulseUiState(
     val activeTab: AppTab = AppTab.HOME,
     val settings: UserSettings = UserSettings(),
     val tutorMode: TutorMode = TutorMode.LECTURE,
+    val activeModule: LearningModule = LearningModule.CONVERSATION,
     val activeTopic: String = "Daily Life",
     val activeScenario: RolePlayScenario? = null,
     val messages: List<ChatMessageUi> = emptyList(),
+    val activeQuickReplies: List<String> = emptyList(),
     val savedVocab: List<VocabItemEntity> = emptyList(),
     val progress: ProgressSummary = ProgressSummary(),
     val avatarState: AvatarState = AvatarState.IDLE,
@@ -71,8 +74,10 @@ class LingoPulseViewModel(
 
     private val _activeTab = MutableStateFlow(AppTab.HOME)
     private val _tutorMode = MutableStateFlow(TutorMode.LECTURE)
+    private val _activeModule = MutableStateFlow(LearningModule.CONVERSATION)
     private val _activeTopic = MutableStateFlow("Daily Life")
     private val _activeScenario = MutableStateFlow<RolePlayScenario?>(null)
+    private val _activeQuickReplies = MutableStateFlow<List<String>>(emptyList())
     private val _isThinking = MutableStateFlow(false)
     private val _isStageExpanded = MutableStateFlow(false)
     private val _isStageCollapsed = MutableStateFlow(false)
@@ -90,11 +95,11 @@ class LingoPulseViewModel(
         initialValue = UserSettings()
     )
 
-    private val currentSessionKeyFlow = combine(_activeTab, _activeScenario, _activeTopic) { tab, scenario, topic ->
+    private val currentSessionKeyFlow = combine(_activeTab, _activeScenario, _activeModule) { tab, scenario, module ->
         if (tab == AppTab.ROLE_PLAY && scenario != null) {
             "roleplay_${scenario.id}"
         } else {
-            "home_${topic.lowercase().replace(" ", "_")}"
+            "home_mod_${module.id}"
         }
     }
 
@@ -156,6 +161,10 @@ class LingoPulseViewModel(
         NavContextBundle(tab, mode, topic, scenario, thinking)
     }
 
+    private val moduleStateFlow = combine(_activeModule, _activeQuickReplies) { mod, replies ->
+        mod to replies
+    }
+
     val uiState: StateFlow<LingoPulseUiState> = combine(
         navContextFlow,
         settingsFlow,
@@ -164,7 +173,8 @@ class LingoPulseViewModel(
         learningRepository.progressSummary,
         stageUiFlow,
         controlsFlow,
-        helperFlow
+        helperFlow,
+        moduleStateFlow
     ) { values ->
         val nav = values[0] as NavContextBundle
         val settings = values[1] as UserSettings
@@ -176,14 +186,18 @@ class LingoPulseViewModel(
         val stage = values[5] as StageAudioBundle
         val controls = values[6] as StageControlsBundle
         val helper = values[7] as HelperBundle
+        @Suppress("UNCHECKED_CAST")
+        val modulePair = values[8] as Pair<LearningModule, List<String>>
 
         LingoPulseUiState(
             activeTab = nav.tab,
             settings = settings,
             tutorMode = nav.mode,
+            activeModule = modulePair.first,
             activeTopic = nav.topic,
             activeScenario = nav.scenario,
             messages = messages,
+            activeQuickReplies = modulePair.second,
             savedVocab = vocab,
             progress = progress,
             avatarState = stage.avatarState,
@@ -218,7 +232,7 @@ class LingoPulseViewModel(
             val initialSettings = settingsRepository.settingsFlow.first()
             val preferredTopic = initialSettings.interests.firstOrNull() ?: "Daily Life"
             _activeTopic.value = preferredTopic
-            ensureSessionSeeded(sessionKey = "home_${preferredTopic.lowercase().replace(" ", "_")}", scenario = null, autoSpeak = false)
+            ensureSessionSeeded(sessionKey = "home_mod_${_activeModule.value.id}", scenario = null, autoSpeak = false)
         }
     }
 
@@ -249,15 +263,41 @@ class LingoPulseViewModel(
         }
     }
 
+    fun selectModule(module: LearningModule) {
+        if (_activeModule.value == module) return
+        speechEngine.stopSpeaking()
+        speechEngine.stopListening()
+        speechEngine.clearVoiceError()
+        _activeModule.value = module
+        _isInspireVisible.value = false
+        _activeQuickReplies.value = emptyList()
+        if (module == LearningModule.TRANSLATE) {
+            _isTextInputVisible.value = true
+        }
+        viewModelScope.launch {
+            val key = "home_mod_${module.id}"
+            val existing = learningRepository.observeChat(key).first()
+            if (existing.isEmpty() || module == LearningModule.QUIZ) {
+                refreshCurrentLessonIntro()
+            } else {
+                // Populate helpful module starter chips when returning to an existing session
+                val preview = aiTutorRepository.generateLessonIntro(
+                    settings = settingsFlow.value,
+                    mode = _tutorMode.value,
+                    topic = _activeTopic.value,
+                    module = module
+                )
+                _activeQuickReplies.value = preview.quickReplies
+            }
+        }
+    }
+
     fun selectTopic(topic: String) {
         if (_activeTopic.value == topic) return
         speechEngine.stopSpeaking()
         _activeTopic.value = topic
         _isInspireVisible.value = false
-        viewModelScope.launch {
-            val key = "home_${topic.lowercase().replace(" ", "_")}"
-            ensureSessionSeeded(key, scenario = null, autoSpeak = settingsFlow.value.autoPlayAudio)
-        }
+        refreshCurrentLessonIntro()
     }
 
     fun setTutorMode(mode: TutorMode) {
@@ -272,6 +312,7 @@ class LingoPulseViewModel(
     fun refreshCurrentLessonIntro() {
         val scenario = if (_activeTab.value == AppTab.ROLE_PLAY) _activeScenario.value else null
         val key = activeSessionKey()
+        val module = _activeModule.value
         viewModelScope.launch {
             speechEngine.stopSpeaking()
             _isThinking.value = true
@@ -279,7 +320,7 @@ class LingoPulseViewModel(
             val response = if (scenario != null) {
                 aiTutorRepository.generateRolePlayIntro(settings, scenario)
             } else {
-                aiTutorRepository.generateLessonIntro(settings, _tutorMode.value, _activeTopic.value)
+                aiTutorRepository.generateLessonIntro(settings, _tutorMode.value, _activeTopic.value, module)
             }
             val msgId = learningRepository.saveTutorMessage(
                 sessionKey = key,
@@ -290,6 +331,7 @@ class LingoPulseViewModel(
                 grammarFeedback = response.grammarFeedback,
                 isSampleResponse = response.isSampleResponse
             )
+            _activeQuickReplies.value = response.quickReplies
             _isThinking.value = false
             if (settings.autoPlayAudio) {
                 speakTutorResponse(
@@ -307,10 +349,12 @@ class LingoPulseViewModel(
     fun openRolePlayScenario(scenario: RolePlayScenario) {
         speechEngine.stopSpeaking()
         speechEngine.stopListening()
+        speechEngine.clearVoiceError()
         _activeScenario.value = scenario
         _isStageExpanded.value = false
         _isStageCollapsed.value = false
         _isInspireVisible.value = false
+        _activeQuickReplies.value = emptyList()
         viewModelScope.launch {
             ensureSessionSeeded("roleplay_${scenario.id}", scenario = scenario, autoSpeak = settingsFlow.value.autoPlayAudio)
         }
@@ -330,13 +374,23 @@ class LingoPulseViewModel(
         autoSpeak: Boolean
     ) {
         val existing = learningRepository.observeChat(sessionKey).first()
-        if (existing.isNotEmpty()) return
+        if (existing.isNotEmpty()) {
+            // Ensure quick replies are populated even for returning sessions
+            val settings = settingsFlow.value
+            val preview = if (scenario != null) {
+                aiTutorRepository.generateRolePlayIntro(settings, scenario)
+            } else {
+                aiTutorRepository.generateLessonIntro(settings, _tutorMode.value, _activeTopic.value, _activeModule.value)
+            }
+            _activeQuickReplies.value = preview.quickReplies
+            return
+        }
         _isThinking.value = true
         val settings = settingsFlow.value
         val response = if (scenario != null) {
             aiTutorRepository.generateRolePlayIntro(settings, scenario)
         } else {
-            aiTutorRepository.generateLessonIntro(settings, _tutorMode.value, _activeTopic.value)
+            aiTutorRepository.generateLessonIntro(settings, _tutorMode.value, _activeTopic.value, _activeModule.value)
         }
         val msgId = learningRepository.saveTutorMessage(
             sessionKey = sessionKey,
@@ -347,6 +401,7 @@ class LingoPulseViewModel(
             grammarFeedback = response.grammarFeedback,
             isSampleResponse = response.isSampleResponse
         )
+        _activeQuickReplies.value = response.quickReplies
         _isThinking.value = false
         if (autoSpeak) {
             speakTutorResponse(
@@ -362,12 +417,16 @@ class LingoPulseViewModel(
 
     fun updateTextDraft(value: String) {
         _textInputDraft.value = value
+        if (value.isNotEmpty()) {
+            speechEngine.clearVoiceError()
+        }
     }
 
     fun toggleTextInput() {
         _isTextInputVisible.value = !_isTextInputVisible.value
         if (_isTextInputVisible.value) {
             speechEngine.stopListening()
+            speechEngine.clearVoiceError()
         }
     }
 
@@ -378,9 +437,11 @@ class LingoPulseViewModel(
         _isInspireVisible.value = false
         speechEngine.stopListening()
         speechEngine.stopSpeaking()
+        speechEngine.clearVoiceError()
 
         val key = activeSessionKey()
         val scenario = if (_activeTab.value == AppTab.ROLE_PLAY) _activeScenario.value else null
+        val module = _activeModule.value
 
         viewModelScope.launch {
             learningRepository.saveUserMessage(key, text)
@@ -392,7 +453,8 @@ class LingoPulseViewModel(
                 mode = _tutorMode.value,
                 scenario = scenario,
                 userText = text,
-                turnCount = turnCount
+                turnCount = turnCount,
+                module = module
             )
             val msgId = learningRepository.saveTutorMessage(
                 sessionKey = key,
@@ -403,6 +465,7 @@ class LingoPulseViewModel(
                 grammarFeedback = response.grammarFeedback,
                 isSampleResponse = response.isSampleResponse
             )
+            _activeQuickReplies.value = response.quickReplies
             _isThinking.value = false
             if (uiState.value.progress.todayMinutes == 0) {
                 learningRepository.logStudyMinutes(1)
@@ -465,32 +528,48 @@ class LingoPulseViewModel(
         val segments = mutableListOf<com.example.model.SpeechSegment>()
 
         if (settings.studyInNativeLanguage) {
-            // Speak warm native intro first (e.g., sweet Bengali voice!)
-            if (nativeExplanation.isNotBlank()) {
-                segments.add(com.example.model.SpeechSegment(nativeExplanation, nativeLocale))
+            // Speak warm native intro first (strip decorative emojis for clean sweet speech)
+            val cleanIntro = cleanForSpeech(nativeExplanation)
+            if (cleanIntro.isNotBlank()) {
+                // If intro contains a separate English line followed by 🇧🇩 Bengali line, split them into right voices!
+                if (nativeExplanation.contains("🇧🇩")) {
+                    val parts = nativeExplanation.split("🇧🇩", limit = 2)
+                    val targetPart = cleanForSpeech(parts[0])
+                    val nativePart = cleanForSpeech(parts.getOrNull(1).orEmpty())
+                    if (targetPart.isNotBlank()) {
+                        segments.add(com.example.model.SpeechSegment(targetPart, targetLocale))
+                    }
+                    if (nativePart.isNotBlank()) {
+                        segments.add(com.example.model.SpeechSegment(nativePart, nativeLocale))
+                    }
+                } else {
+                    segments.add(com.example.model.SpeechSegment(cleanIntro, nativeLocale))
+                }
             } else if (spokenText.isNotBlank()) {
-                segments.add(com.example.model.SpeechSegment(spokenText, targetLocale))
+                segments.add(com.example.model.SpeechSegment(cleanForSpeech(spokenText), targetLocale))
             }
             // Speak each Target Language phrase in Target voice + its Native meaning in Native voice
             phrases.forEach { phrase ->
-                if (phrase.targetText.isNotBlank()) {
-                    segments.add(com.example.model.SpeechSegment(phrase.targetText, targetLocale))
+                val cleanTarget = cleanForSpeech(phrase.targetText)
+                if (cleanTarget.isNotBlank()) {
+                    segments.add(com.example.model.SpeechSegment(cleanTarget, targetLocale))
                 }
-                if (phrase.nativeMeaning.isNotBlank()) {
-                    segments.add(com.example.model.SpeechSegment(phrase.nativeMeaning, nativeLocale))
+                val cleanNative = cleanForSpeech(phrase.nativeMeaning)
+                if (cleanNative.isNotBlank()) {
+                    segments.add(com.example.model.SpeechSegment(cleanNative, nativeLocale))
                 }
             }
-            // Speak friendly follow-up question in Native voice
-            if (practicePrompt.isNotBlank()) {
-                segments.add(com.example.model.SpeechSegment(practicePrompt, nativeLocale))
+            val cleanPrompt = cleanForSpeech(practicePrompt)
+            if (cleanPrompt.isNotBlank()) {
+                segments.add(com.example.model.SpeechSegment(cleanPrompt, nativeLocale))
             }
         } else {
             if (spokenText.isNotBlank()) {
-                segments.add(com.example.model.SpeechSegment(spokenText, targetLocale))
+                segments.add(com.example.model.SpeechSegment(cleanForSpeech(spokenText), targetLocale))
             }
             phrases.forEach { phrase ->
                 if (phrase.targetText.isNotBlank()) {
-                    segments.add(com.example.model.SpeechSegment(phrase.targetText, targetLocale))
+                    segments.add(com.example.model.SpeechSegment(cleanForSpeech(phrase.targetText), targetLocale))
                 }
             }
         }
@@ -502,6 +581,11 @@ class LingoPulseViewModel(
             messageId = messageId
         )
     }
+
+    private fun cleanForSpeech(raw: String): String =
+        raw.replace(Regex("[🔍📖🎯💬🔤🗣️💼✈️🇧🇩✅💡🎉•«»]"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
 
     fun speakPhrase(text: String, langBcp47: String = settingsFlow.value.targetLanguage.bcp47) {
         val settings = settingsFlow.value
@@ -565,7 +649,7 @@ class LingoPulseViewModel(
             val settings = settingsFlow.value
             val scenario = if (_activeTab.value == AppTab.ROLE_PLAY) _activeScenario.value else null
             val lastAi = uiState.value.messages.lastOrNull { !it.isUser }?.spokenText
-            val hints = aiTutorRepository.generateInspireHints(settings, _tutorMode.value, scenario, lastAi)
+            val hints = aiTutorRepository.generateInspireHints(settings, _tutorMode.value, scenario, lastAi, _activeModule.value)
             _inspireSuggestions.value = hints
             _isInspireVisible.value = true
         }
@@ -725,7 +809,7 @@ class LingoPulseViewModel(
         return if (_activeTab.value == AppTab.ROLE_PLAY && scenario != null) {
             "roleplay_${scenario.id}"
         } else {
-            "home_${_activeTopic.value.lowercase().replace(" ", "_")}"
+            "home_mod_${_activeModule.value.id}"
         }
     }
 

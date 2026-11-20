@@ -102,6 +102,23 @@ data class UserSettings(
         get() = WorldLanguagesCatalog.byCode(nativeLanguageCode)
 }
 
+enum class LearningModule(
+    val id: String,
+    val emoji: String,
+    val label: String,
+    val bnLabel: String,
+    val hint: String
+) {
+    CONVERSATION("conversation", "💬", "Conversation", "কথোপকথন", "Natural back-and-forth speaking"),
+    TRANSLATE("translate", "🔍", "Meaning & Translate", "অর্থ ও অনুবাদ", "Ask any word or sentence meaning live"),
+    GRAMMAR("grammar", "📖", "Grammar & Tense", "গ্রামার ও টেন্স", "Tenses, prepositions & sentence rules"),
+    VOCABULARY("vocabulary", "🔤", "Vocabulary", "শব্দভান্ডার", "Useful words with definitions & examples"),
+    PRONUNCIATION("pronunciation", "🗣️", "Pronunciation", "উচ্চারণ", "Stress, phonetics & shadowing practice"),
+    QUIZ("quiz", "🎯", "Quick Quiz", "কুইজ পরীক্ষা", "Interactive multiple-choice practice"),
+    OFFICE("office", "💼", "Office & Career", "অফিস ও ইন্টারভিউ", "Meetings, emails & interviews"),
+    TRAVEL("travel", "✈️", "Travel & Dining", "ভ্রমণ ও রেস্তোরাঁ", "Airport, hotel, shopping & food")
+}
+
 data class VocabPhrase(
     val targetText: String,
     val pronunciation: String,
@@ -114,7 +131,8 @@ data class TutorResponse(
     val phrases: List<VocabPhrase>,
     val practicePrompt: String,
     val grammarFeedback: String? = null,
-    val isSampleResponse: Boolean = true
+    val isSampleResponse: Boolean = true,
+    val quickReplies: List<String> = emptyList()
 )
 
 data class InspireSuggestion(

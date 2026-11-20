@@ -25,7 +25,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -106,6 +108,7 @@ fun ChatWorkspace(
     onTextDraftChange: (String) -> Unit,
     onSendMessage: (String) -> Unit,
     onToggleInspire: () -> Unit,
+    quickReplies: List<String> = emptyList(),
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -366,6 +369,38 @@ fun ChatWorkspace(
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        // Interactive Quick Replies / Quiz Choice Chips
+        AnimatedVisibility(
+            visible = quickReplies.isNotEmpty() && !isThinking,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut()
+        ) {
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                itemsIndexed(quickReplies) { idx, reply ->
+                    Surface(
+                        onClick = { onSendMessage(reply) },
+                        shape = RoundedCornerShape(50),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+                        modifier = Modifier.testTag("quick_reply_chip_$idx")
+                    ) {
+                        Text(
+                            text = reply,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
+                        )
                     }
                 }
             }

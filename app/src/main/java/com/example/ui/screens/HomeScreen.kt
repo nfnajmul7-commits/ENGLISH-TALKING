@@ -31,6 +31,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.model.ChatMessageUi
+import com.example.model.LearningModule
 import com.example.model.TutorMode
 import com.example.model.VocabPhrase
 import com.example.ui.components.ChatWorkspace
@@ -41,6 +42,7 @@ import com.example.viewmodel.LingoPulseUiState
 fun HomeScreen(
     uiState: LingoPulseUiState,
     onSelectTopic: (String) -> Unit,
+    onSelectModule: (LearningModule) -> Unit,
     onSelectLevel: (com.example.model.LanguageLevel) -> Unit,
     onModeChange: (TutorMode) -> Unit,
     onCycleSpeed: () -> Unit,
@@ -185,6 +187,31 @@ fun HomeScreen(
             }
         }
 
+        // 8 Interactive Learning Modules Strip (Conversation, Translate, Grammar, Vocab, Pronunciation, Quiz, Office, Travel)
+        LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 2.dp),
+            contentPadding = PaddingValues(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            items(LearningModule.entries, key = { it.id }) { mod ->
+                val selected = uiState.activeModule == mod
+                val label = if (isBn) "${mod.emoji} ${mod.bnLabel}" else "${mod.emoji} ${mod.label}"
+                FilterChip(
+                    selected = selected,
+                    onClick = { onSelectModule(mod) },
+                    label = {
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    },
+                    modifier = Modifier.testTag("module_chip_${mod.id}")
+                )
+            }
+        }
+
         // Lesson Chat Workspace
         ChatWorkspace(
             messages = uiState.messages,
@@ -212,6 +239,7 @@ fun HomeScreen(
             onTextDraftChange = onTextDraftChange,
             onSendMessage = onSendMessage,
             onToggleInspire = onToggleInspire,
+            quickReplies = uiState.activeQuickReplies,
             modifier = Modifier.weight(1f)
         )
     }

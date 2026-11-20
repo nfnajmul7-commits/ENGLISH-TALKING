@@ -48,6 +48,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.audio.SpeechLipSyncEngine
 import com.example.data.AppDatabase
 import com.example.data.LearningRepository
+import com.example.data.LiveLanguageLookupService
 import com.example.data.PlaceholderAiTutorRepository
 import com.example.data.SettingsRepository
 import com.example.model.AppTab
@@ -66,7 +67,7 @@ class MainActivity : ComponentActivity() {
         val appContext = applicationContext
         val settingsRepo = SettingsRepository(appContext)
         val learningRepo = LearningRepository(AppDatabase.getInstance(appContext))
-        val aiTutorRepo = PlaceholderAiTutorRepository()
+        val aiTutorRepo = PlaceholderAiTutorRepository(LiveLanguageLookupService())
         val speechEngine = SpeechLipSyncEngine(appContext)
         val vmFactory = LingoPulseViewModel.Factory(
             settingsRepository = settingsRepo,
@@ -167,6 +168,7 @@ private fun LingoPulseApp(viewModel: LingoPulseViewModel) {
                         AppTab.HOME -> HomeScreen(
                             uiState = uiState,
                             onSelectTopic = viewModel::selectTopic,
+                            onSelectModule = viewModel::selectModule,
                             onSelectLevel = viewModel::setLevel,
                             onModeChange = viewModel::setTutorMode,
                             onCycleSpeed = viewModel::cycleSpeechRate,
